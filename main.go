@@ -4,32 +4,25 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
+	"task-tracker/task"
 )
 
-type Task struct {
-	ID        int
-	Title     string
-	Completed bool
-}
-
-const (
-	appName    = "Task Tracker"
-	appVersion = "1.0.0"
-)
-
-var tasks []Task
-var nextID int = 1
+var store *task.TaskStore
 var reader = bufio.NewReader(os.Stdin)
 
 func main() {
-	showWelcome()
+	store = task.NewTaskStore()
+	
+	// Add some initial tasks
+	store.AddTask("Learn Go basics")
+	store.AddTask("Complete Phase 3")
+	store.AddTask("Practice slices and maps")
 	
 	for {
 		showMenu()
-		choice := getUserChoice()
-		
-		if !processChoice(choice) {
+		if !processChoice() {
 			break
 		}
 	}
@@ -37,102 +30,135 @@ func main() {
 	fmt.Println("Goodbye!")
 }
 
-func showWelcome() {
-	fmt.Printf("Welcome to %s v%s\n", appName, appVersion)
-	fmt.Println("================================")
-}
-
 func showMenu() {
-	fmt.Println("\n--- MENU ---")
+	fmt.Println("\n=== TASK TRACKER ===")
 	fmt.Println("1. Add Task")
-	fmt.Println("2. List Tasks")
+	fmt.Println("2. List All Tasks")
 	fmt.Println("3. Mark Task Complete")
-	fmt.Println("4. Exit")
+	fmt.Println("4. Delete Task")
+	fmt.Println("5. Find Tasks by Title")
+	fmt.Println("6. Show Statistics")
+	fmt.Println("7. Exit")
 	fmt.Print("Enter choice: ")
 }
 
-func getUserChoice() int {
-	var choice int
-	fmt.Scanln(&choice)
-	return choice
-}
-
-func processChoice(choice int) bool {
+func processChoice() bool {
+	choice := readInt()
+	
 	switch choice {
 	case 1:
 		addTask()
-		return true
 	case 2:
 		listTasks()
-		return true
 	case 3:
-		markTaskComplete()
-		return true
+		markComplete()
 	case 4:
+		deleteTask()
+	case 5:
+		findTasks()
+	case 6:
+		store.DisplayStats()
+	case 7:
 		return false
 	default:
-		fmt.Println("Invalid choice. Please try again.")
-		return true
+		fmt.Println("Invalid choice!")
 	}
+	return true
 }
 
 func addTask() {
 	fmt.Print("Enter task title: ")
-	title, _ := reader.ReadString('\n')
-	title = strings.TrimSpace(title)
+	title := readString()
 	
 	if title == "" {
-		fmt.Println("Task title cannot be empty!")
+		fmt.Println("Title cannot be empty!")
 		return
 	}
 	
-	task := Task{
-		ID:        nextID,
-		Title:     title,
-		Completed: false,
-	}
-	
-	tasks = append(tasks, task)
-	nextID++
-	
+	task := store.AddTask(title)
 	fmt.Printf("Task added with ID: %d\n", task.ID)
 }
 
 func listTasks() {
+	tasks := store.GetAllTasks()
+	
 	if len(tasks) == 0 {
 		fmt.Println("No tasks found.")
 		return
 	}
 	
-	fmt.Println("\n--- TASKS ---")
-	for _, task := range tasks {
+	fmt.Println("\n--- ALL TASKS ---")
+	for _, t := range tasks {
 		status := " "
-		if task.Completed {
+		if t.Completed {
 			status = "✓"
 		}
-		fmt.Printf("[%s] %d: %s\n", status, task.ID, task.Title)
+		fmt.Printf("[%s] %d: %s\n", status, t.ID, t.Title)
 	}
 }
 
-func markTaskComplete() {
-	if len(tasks) == 0 {
-		fmt.Println("No tasks to complete.")
+func markComplete() {
+	listTasks()
+	
+	if len(store.GetAllTasks()) == 0 {
 		return
 	}
 	
+	fmt.Print("Enter task ID to complete: ")
+	id := readInt()
+	
+	if store.MarkComplete(id) {
+		fmt.Println("Task marked as complete!")
+	} else {
+		fmt.Printf("Task with ID %d not found.\n", id)
+	}
+}
+
+func deleteTask() {
 	listTasks()
 	
-	fmt.Print("Enter task ID to mark complete: ")
-	var id int
-	fmt.Scanln(&id)
-	
-	for i, task := range tasks {
-		if task.ID == id {
-			tasks[i].Completed = true
-			fmt.Printf("Task '%s' marked as complete!\n", task.Title)
-			return
-		}
+	if len(store.GetAllTasks()) == 0 {
+		return
 	}
 	
-	fmt.Printf("Task with ID %d not found.\n", id)
+	fmt.Print("Enter task ID to delete: ")
+	id := readInt()
+	
+	if store.DeleteTask(id) {
+		fmt.Println("Task deleted!")
+	} else {
+		fmt.Printf("Task with ID %d not found.\n", id)
+	}
+}
+
+func findTasks() {
+	fmt.Print("Enter title to search: ")
+	title := readString()
+	
+	results := store.FindByTitle(title)
+	
+	if len(results) == 0 {
+		fmt.Println("No matching tasks found.")
+		return
+	}
+	
+	fmt.Println("\n--- SEARCH RESULTS ---")
+	for _, t := range results {
+		status := " "
+		if t.Completed {
+			status = "✓"
+		}
+		fmt.Printf("[%s] %d: %s\n", status, t.ID, t.Title)
+	}
+}
+
+func readString() string {
+	input, _ := reader.ReadString('\n')
+	return strings.TrimSpace(input)
+}
+
+func readInt() int {
+	input := readString()
+	val, _ := strconv.Atoi(input)
+	return val
 }
