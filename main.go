@@ -15,10 +15,21 @@ var reader = bufio.NewReader(os.Stdin)
 func main() {
 	store = task.NewTaskStore()
 	
-	// Add some initial tasks
-	store.AddTask("Learn Go basics")
-	store.AddTask("Complete Phase 3")
-	store.AddTask("Practice slices and maps")
+	// Add sample tasks with different priorities
+	store.Add("Learn Go basics")
+	store.Add("Complete Phase 4")
+	store.Add("Practice interfaces")
+	store.Add("Write documentation")
+	
+	store.SetPriority(1, task.High)
+	store.SetPriority(2, task.Critical)
+	store.SetPriority(3, task.Medium)
+	
+	store.AddTag(1, "learning")
+	store.AddTag(2, "project")
+	store.AddTag(3, "practice")
+	
+	store.MarkComplete(1)
 	
 	for {
 		showMenu()
@@ -27,18 +38,24 @@ func main() {
 		}
 	}
 	
+	fmt.Println("\nFinal Statistics:")
+	store.DisplayStats()
 	fmt.Println("Goodbye!")
 }
 
 func showMenu() {
-	fmt.Println("\n=== TASK TRACKER ===")
+	fmt.Println("\n🎯 === TASK TRACKER (Methods & Interfaces) ===")
 	fmt.Println("1. Add Task")
 	fmt.Println("2. List All Tasks")
-	fmt.Println("3. Mark Task Complete")
-	fmt.Println("4. Delete Task")
-	fmt.Println("5. Find Tasks by Title")
-	fmt.Println("6. Show Statistics")
-	fmt.Println("7. Exit")
+	fmt.Println("3. List Tasks (Simple)")
+	fmt.Println("4. Mark Task Complete")
+	fmt.Println("5. Set Task Priority")
+	fmt.Println("6. Add Tag to Task")
+	fmt.Println("7. Find by Priority")
+	fmt.Println("8. Find by Tag")
+	fmt.Println("9. Show Statistics")
+	fmt.Println("10. Delete Task")
+	fmt.Println("11. Exit")
 	fmt.Print("Enter choice: ")
 }
 
@@ -49,16 +66,24 @@ func processChoice() bool {
 	case 1:
 		addTask()
 	case 2:
-		listTasks()
+		listTasksDetailed()
 	case 3:
-		markComplete()
+		listTasksSimple()
 	case 4:
-		deleteTask()
+		markComplete()
 	case 5:
-		findTasks()
+		setPriority()
 	case 6:
-		store.DisplayStats()
+		addTag()
 	case 7:
+		findByPriority()
+	case 8:
+		findByTag()
+	case 9:
+		store.DisplayStats()
+	case 10:
+		deleteTask()
+	case 11:
 		return false
 	default:
 		fmt.Println("Invalid choice!")
@@ -70,86 +95,151 @@ func addTask() {
 	fmt.Print("Enter task title: ")
 	title := readString()
 	
-	if title == "" {
-		fmt.Println("Title cannot be empty!")
+	task, err := store.Add(title)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
 		return
 	}
 	
-	task := store.AddTask(title)
 	fmt.Printf("Task added with ID: %d\n", task.ID)
 }
 
-func listTasks() {
-	tasks := store.GetAllTasks()
+func listTasksDetailed() {
+	tasks := store.GetAll()
 	
 	if len(tasks) == 0 {
 		fmt.Println("No tasks found.")
 		return
 	}
 	
-	fmt.Println("\n--- ALL TASKS ---")
+	fmt.Println("\n📋 --- ALL TASKS (Detailed) ---")
 	for _, t := range tasks {
-		status := " "
-		if t.Completed {
-			status = "✓"
-		}
-		fmt.Printf("[%s] %d: %s\n", status, t.ID, t.Title)
+		fmt.Println(t.Display())
+	}
+}
+
+func listTasksSimple() {
+	tasks := store.GetAll()
+	
+	if len(tasks) == 0 {
+		fmt.Println("No tasks found.")
+		return
+	}
+	
+	fmt.Println("\n📋 --- ALL TASKS ---")
+	for _, t := range tasks {
+		fmt.Println(t.DisplaySimple())
 	}
 }
 
 func markComplete() {
-	listTasks()
-	
-	if len(store.GetAllTasks()) == 0 {
-		return
-	}
+	listTasksSimple()
 	
 	fmt.Print("Enter task ID to complete: ")
 	id := readInt()
 	
-	if store.MarkComplete(id) {
-		fmt.Println("Task marked as complete!")
-	} else {
-		fmt.Printf("Task with ID %d not found.\n", id)
+	err := store.MarkComplete(id)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+	
+	fmt.Println("Task marked as complete!")
+}
+
+func setPriority() {
+	listTasksSimple()
+	
+	fmt.Print("Enter task ID: ")
+	id := readInt()
+	
+	fmt.Println("Priority levels:")
+	fmt.Println("0: Low")
+	fmt.Println("1: Medium")
+	fmt.Println("2: High")
+	fmt.Println("3: Critical")
+	fmt.Print("Enter priority (0-3): ")
+	p := readInt()
+	
+	err := store.SetPriority(id, task.Priority(p))
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+	
+	fmt.Println("Priority updated!")
+}
+
+func addTag() {
+	listTasksSimple()
+	
+	fmt.Print("Enter task ID: ")
+	id := readInt()
+	
+	fmt.Print("Enter tag: ")
+	tag := readString()
+	
+	err := store.AddTag(id, tag)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
+	
+	fmt.Println("Tag added!")
+}
+
+func findByPriority() {
+	fmt.Println("Priority levels:")
+	fmt.Println("0: Low")
+	fmt.Println("1: Medium")
+	fmt.Println("2: High")
+	fmt.Println("3: Critical")
+	fmt.Print("Enter priority to search (0-3): ")
+	p := readInt()
+	
+	tasks := store.GetByPriority(task.Priority(p))
+	
+	if len(tasks) == 0 {
+		fmt.Println("No tasks found with this priority.")
+		return
+	}
+	
+	fmt.Printf("\n📋 --- %s PRIORITY TASKS ---\n", task.Priority(p))
+	for _, t := range tasks {
+		fmt.Println(t.Display())
+	}
+}
+
+func findByTag() {
+	fmt.Print("Enter tag to search: ")
+	tag := readString()
+	
+	tasks := store.GetByTag(tag)
+	
+	if len(tasks) == 0 {
+		fmt.Println("No tasks found with this tag.")
+		return
+	}
+	
+	fmt.Printf("\n📋 --- TASKS WITH TAG '%s' ---\n", tag)
+	for _, t := range tasks {
+		fmt.Println(t.Display())
 	}
 }
 
 func deleteTask() {
-	listTasks()
-	
-	if len(store.GetAllTasks()) == 0 {
-		return
-	}
+	listTasksSimple()
 	
 	fmt.Print("Enter task ID to delete: ")
 	id := readInt()
 	
-	if store.DeleteTask(id) {
-		fmt.Println("Task deleted!")
-	} else {
-		fmt.Printf("Task with ID %d not found.\n", id)
-	}
-}
-
-func findTasks() {
-	fmt.Print("Enter title to search: ")
-	title := readString()
-	
-	results := store.FindByTitle(title)
-	
-	if len(results) == 0 {
-		fmt.Println("No matching tasks found.")
+	err := store.Delete(id)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
 		return
 	}
 	
-	fmt.Println("\n--- SEARCH RESULTS ---")
-	for _, t := range results {
-		status := " "
-		if t.Completed {
-			status = "✓"
-		}
-		fmt.Printf("[%s] %d: %s\n", status, t.ID, t.Title)
-	}
+	fmt.Println("Task deleted!")
 }
 
 func readString() string {
