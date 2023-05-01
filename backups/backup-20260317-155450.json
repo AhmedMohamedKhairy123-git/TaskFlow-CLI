@@ -1,0 +1,44 @@
+{
+  "timestamp": "2026-03-17T15:54:50.2650237+02:00",
+  "tasks": [
+    {
+      "ID": 3,
+      "Title": "Add panic recovery",
+      "Completed": false,
+      "Priority": 1,
+      "CreatedAt": "2026-03-17T15:52:39.5319766+02:00",
+      "Tags": [
+        "backlog"
+      ]
+    },
+    {
+      "ID": 4,
+      "Title": "Create backup system",
+      "Completed": false,
+      "Priority": 0,
+      "CreatedAt": "2026-03-17T15:52:39.5319766+02:00",
+      "Tags": []
+    },
+    {
+      "ID": 1,
+      "Title": "Learn Go error handling",
+      "Completed": false,
+      "Priority": 2,
+      "CreatedAt": "2026-03-17T15:52:39.5319766+02:00",
+      "Tags": [
+        "learning"
+      ]
+    },
+    {
+      "ID": 2,
+      "Title": "Implement custom errors",
+      "Completed": false,
+      "Priority": 3,
+      "CreatedAt": "2026-03-17T15:52:39.5319766+02:00",
+      "Tags": [
+        "critical"
+      ]
+    }
+  ],
+  "version": "1.0.0"
+}
