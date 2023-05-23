@@ -4,10 +4,13 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
-	"time"  // Add this
+	"time"
+	"task-tracker/config"
 	"task-tracker/errors"
+	"task-tracker/storage"
 	"task-tracker/task"
 )
 
@@ -15,95 +18,122 @@ var (
 	store         *task.TaskStore
 	validator     *task.Validator
 	backupManager *task.BackupManager
+	jsonStorage   *storage.JSONStorage
+	appConfig     *config.Config
 	reader        = bufio.NewReader(os.Stdin)
+	autoSaveTicker *time.Ticker
 )
 
 func main() {
-	// Initialize with panic recovery
-	defer func() {
-		if r := recover(); r != nil {
-			rec := errors.NewRecovery(r)
-			fmt.Printf("\n🔥 CRITICAL: Application recovered from panic!\n")
-			fmt.Printf("Recovery ID: %s\n", rec.ID)
-			fmt.Printf("Please check logs and consider restoring from backup.\n")
-			
-			// Attempt auto-recovery
-			if backupManager != nil {
-				fmt.Println("Attempting to restore from latest backup...")
-				if err := backupManager.RestoreLatest(); err != nil {
-					fmt.Printf("Auto-recovery failed: %v\n", err)
-				} else {
-					fmt.Println("✅ Auto-recovery successful!")
-				}
-			}
-		}
-	}()
-	
-	// Initialize components
+	defer handlePanic()
 	initializeApp()
-	
-	// Main loop with error handling
+	startAutoSave()
 	runApplication()
 }
 
-func initializeApp() {
-	fmt.Println("🚀 Initializing Task Tracker with Advanced Error Handling")
-	
-	// Initialize store
-	store = task.NewTaskStore()
-	
-	// Initialize validator with custom rules
-	validator = task.NewValidator()
-	validator.AddRule(task.MinTitleLength(3))
-	validator.AddRule(task.NoProfanity([]string{"badword", "spam"}))
-	
-	// Initialize backup manager
-	backupManager = task.NewBackupManager(store, "./backups")
-	backupManager.SetErrorHandler(func(err error) {
-		fmt.Printf("📦 Backup System: %v\n", err)
-	})
-	
-	// Load sample data with error handling
-	loadSampleData()
-	
-	// Create initial backup
-	if _, err := backupManager.CreateBackup(); err != nil {
-		handleError(err, "Failed to create initial backup")
+func handlePanic() {
+	if r := recover(); r != nil {
+		rec := errors.NewRecovery(r)
+		fmt.Printf("\n🔥 CRITICAL: Application recovered from panic!\n")
+		fmt.Printf("Recovery ID: %s\n", rec.ID)
+		
+		// Emergency save
+		if store != nil && jsonStorage != nil {
+			fmt.Println("Attempting emergency save...")
+			tasks := store.GetAll()
+			if err := jsonStorage.Save(tasks); err != nil {
+				fmt.Printf("Emergency save failed: %v\n", err)
+			} else {
+				fmt.Println("✅ Emergency save successful!")
+			}
+		}
 	}
+}
+
+func initializeApp() {
+	fmt.Println("🚀 Initializing Task Tracker with File I/O")
+	
+	// Load configuration
+	loadConfig()
+	
+	// Initialize storage
+	initStorage()
+	
+	// Initialize components
+	store = task.NewTaskStore()
+	validator = task.NewValidator()
+	
+	// Load tasks from file
+	loadTasksFromFile()
+	
+	// Initialize backup manager with storage
+	backupManager = task.NewBackupManager(store, appConfig.BackupDir)
 	
 	fmt.Println("✅ Initialization complete!")
 }
 
-func loadSampleData() {
-	// Use error handling for sample data creation
-	defer func() {
-		if r := recover(); r != nil {
-			fmt.Printf("⚠️ Warning: Sample data loading recovered from panic: %v\n", r)
+func loadConfig() {
+	var err error
+	appConfig, err = config.LoadConfig("config.json")
+	if err != nil {
+		fmt.Printf("⚠️ Warning: Using default config (%v)\n", err)
+		appConfig = config.DefaultConfig()
+	}
+	
+	// Save config if it doesn't exist
+	if _, err := os.Stat("config.json"); os.IsNotExist(err) {
+		appConfig.Save("config.json")
+	}
+}
+
+func initStorage() {
+	jsonStorage = storage.NewJSONStorage(
+		appConfig.DataFile,
+		appConfig.BackupDir,
+	)
+}
+
+func loadTasksFromFile() {
+	tasks, err := jsonStorage.Load()
+	if err != nil {
+		handleError(err, "Failed to load tasks from file")
+		return
+	}
+	
+	// Populate store
+	for _, t := range tasks {
+		store.Add(t.Title)
+		// Restore additional properties
+		if task, exists := store.Tasks[t.ID]; exists {
+			task.Completed = t.Completed
+			task.Priority = t.Priority
+			task.Tags = t.Tags
+			task.CreatedAt = t.CreatedAt
+		}
+	}
+	
+	fmt.Printf("📂 Loaded %d tasks from %s\n", len(tasks), appConfig.DataFile)
+}
+
+func startAutoSave() {
+	if !appConfig.AutoSave {
+		return
+	}
+	
+	autoSaveTicker = time.NewTicker(time.Duration(appConfig.SaveInterval) * time.Second)
+	
+	go func() {
+		for range autoSaveTicker.C {
+			if store != nil {
+				tasks := store.GetAll()
+				if err := jsonStorage.Save(tasks); err != nil {
+					fmt.Printf("⚠️ Auto-save failed: %v\n", err)
+				} else {
+					fmt.Printf("💾 Auto-saved %d tasks\n", len(tasks))
+				}
+			}
 		}
 	}()
-	
-	sampleTasks := []string{
-		"Learn Go error handling",
-		"Implement custom errors",
-		"Add panic recovery",
-		"Create backup system",
-	}
-	
-	for _, title := range sampleTasks {
-		if _, err := store.Add(title); err != nil {
-			handleError(err, "Failed to add sample task")
-		}
-	}
-	
-	// Set some priorities
-	store.SetPriority(1, task.High)
-	store.SetPriority(2, task.Critical)
-	store.SetPriority(3, task.Medium)
-	
-	// Add tags
-	store.AddTag(1, "learning")
-	store.AddTag(2, "critical")
-	store.AddTag(3, "backlog")
 }
 
 func runApplication() {
@@ -115,62 +145,57 @@ func runApplication() {
 		}
 	}
 	
-	// Create final backup before exit
-	fmt.Println("\n📦 Creating final backup...")
-	if _, err := backupManager.CreateBackup(); err != nil {
-		handleError(err, "Failed to create final backup")
-	}
-	
+	// Save before exit
+	saveTasks()
 	fmt.Println("👋 Goodbye!")
 }
 
 func showMenu() {
-	fmt.Println("\n🔰 === TASK TRACKER (Advanced Error Handling) ===")
+	fmt.Println("\n💾 === TASK TRACKER (File I/O) ===")
 	fmt.Println("1. Add Task")
 	fmt.Println("2. List Tasks")
 	fmt.Println("3. Mark Task Complete")
 	fmt.Println("4. Set Priority")
 	fmt.Println("5. Add Tag")
-	fmt.Println("6. Validate Task")
-	fmt.Println("7. Create Backup")
-	fmt.Println("8. List Backups")
-	fmt.Println("9. Restore from Backup")
-	fmt.Println("10. Test Panic Recovery")
-	fmt.Println("11. Exit")
+	fmt.Println("6. Save Tasks")
+	fmt.Println("7. Load Tasks")
+	fmt.Println("8. Create Backup")
+	fmt.Println("9. List Backups")
+	fmt.Println("10. Restore from Backup")
+	fmt.Println("11. View File Info")
+	fmt.Println("12. Exit")
 	fmt.Print("Enter choice: ")
 }
 
 func processChoiceSafe() bool {
-	defer func() {
-		if r := recover(); r != nil {
-			fmt.Printf("⚠️ Recovered from panic in menu handler: %v\n", r)
-		}
-	}()
+	defer recoverFromPanic()
 	
 	choice := readInt()
 	
 	switch choice {
 	case 1:
-		addTaskWithValidation()
+		addTask()
 	case 2:
-		listTasksWithErrorHandling()
+		listTasks()
 	case 3:
-		markCompleteWithErrorHandling()
+		markComplete()
 	case 4:
-		setPriorityWithErrorHandling()
+		setPriority()
 	case 5:
-		addTagWithErrorHandling()
+		addTag()
 	case 6:
-		validateSpecificTask()
+		saveTasks()
 	case 7:
-		createBackup()
+		loadTasks()
 	case 8:
-		listBackups()
+		createBackup()
 	case 9:
-		restoreFromBackup()
+		listBackups()
 	case 10:
-		testPanicRecovery()
+		restoreFromBackup()
 	case 11:
+		viewFileInfo()
+	case 12:
 		return false
 	default:
 		fmt.Println("Invalid choice!")
@@ -178,55 +203,35 @@ func processChoiceSafe() bool {
 	return true
 }
 
-func handleError(err error, context string) {
-	if err == nil {
-		return
-	}
-	
-	fmt.Printf("\n❌ ERROR: %s\n", context)
-	
-	// Type assertion to check if it's our custom error
-	if appErr, ok := err.(*errors.AppError); ok {
-		fmt.Printf("   Code: %s\n", appErr.Code)
-		fmt.Printf("   Message: %s\n", appErr.Message)
-		fmt.Printf("   Operation: %s\n", appErr.Operation)
-		fmt.Printf("   Time: %s\n", appErr.Timestamp.Format(time.RFC3339))
-		
-		if len(appErr.Context) > 0 {
-			fmt.Println("   Context:")
-			for k, v := range appErr.Context {
-				fmt.Printf("     %s: %v\n", k, v)
-			}
-		}
-	} else {
-		fmt.Printf("   %v\n", err)
+func recoverFromPanic() {
+	if r := recover(); r != nil {
+		fmt.Printf("⚠️ Recovered from panic: %v\n", r)
 	}
 }
 
-func addTaskWithValidation() {
+func addTask() {
 	fmt.Print("Enter task title: ")
 	title := readString()
 	
-	// Create temporary task for validation
-	tempTask := &task.Task{Title: title}
-	
-	// Validate before adding
-	if err := validator.Validate(tempTask); err != nil {
-		handleError(err, "Task validation failed")
+	if title == "" {
+		fmt.Println("Title cannot be empty!")
 		return
 	}
 	
-	// Add task
-	newTask, err := store.Add(title)
+	task, err := store.Add(title)
 	if err != nil {
 		handleError(err, "Failed to add task")
 		return
 	}
 	
-	fmt.Printf("✅ Task added with ID: %d\n", newTask.ID)
+	fmt.Printf("✅ Task added with ID: %d\n", task.ID)
+	
+	if appConfig.AutoSave {
+		saveTasks()
+	}
 }
 
-func listTasksWithErrorHandling() {
+func listTasks() {
 	tasks := store.GetAll()
 	
 	if len(tasks) == 0 {
@@ -236,16 +241,12 @@ func listTasksWithErrorHandling() {
 	
 	fmt.Println("\n📋 --- ALL TASKS ---")
 	for _, t := range tasks {
-		// Validate each task while displaying
-		if err := validator.Validate(&t); err != nil {
-			fmt.Printf("⚠️ Task %d has validation issues\n", t.ID)
-		}
 		fmt.Println(t.Display())
 	}
 }
 
-func markCompleteWithErrorHandling() {
-	listTasksWithErrorHandling()
+func markComplete() {
+	listTasks()
 	
 	fmt.Print("Enter task ID to complete: ")
 	id := readInt()
@@ -258,16 +259,13 @@ func markCompleteWithErrorHandling() {
 	
 	fmt.Println("✅ Task marked as complete!")
 	
-	// Trigger auto-backup after modification
-	go func() {
-		if _, err := backupManager.CreateBackup(); err != nil {
-			handleError(err, "Auto-backup failed")
-		}
-	}()
+	if appConfig.AutoSave {
+		saveTasks()
+	}
 }
 
-func setPriorityWithErrorHandling() {
-	listTasksWithErrorHandling()
+func setPriority() {
+	listTasks()
 	
 	fmt.Print("Enter task ID: ")
 	id := readInt()
@@ -289,8 +287,8 @@ func setPriorityWithErrorHandling() {
 	fmt.Println("✅ Priority updated!")
 }
 
-func addTagWithErrorHandling() {
-	listTasksWithErrorHandling()
+func addTag() {
+	listTasks()
 	
 	fmt.Print("Enter task ID: ")
 	id := readInt()
@@ -307,42 +305,70 @@ func addTagWithErrorHandling() {
 	fmt.Println("✅ Tag added!")
 }
 
-func validateSpecificTask() {
-	listTasksWithErrorHandling()
+func saveTasks() {
+	fmt.Println("💾 Saving tasks...")
 	
-	fmt.Print("Enter task ID to validate: ")
-	id := readInt()
-	
-	task, err := store.Get(id)
-	if err != nil {
-		handleError(err, "Failed to get task")
+	tasks := store.GetAll()
+	if err := jsonStorage.Save(tasks); err != nil {
+		handleError(err, "Failed to save tasks")
 		return
 	}
 	
-	if err := validator.Validate(&task); err != nil {
-		handleError(err, "Task validation failed")
+	// Get file info
+	info, err := os.Stat(appConfig.DataFile)
+	if err != nil {
+		fmt.Printf("✅ Saved %d tasks to %s\n", len(tasks), appConfig.DataFile)
 	} else {
-		fmt.Println("✅ Task is valid!")
+		fmt.Printf("✅ Saved %d tasks to %s (%d bytes)\n", 
+			len(tasks), appConfig.DataFile, info.Size())
 	}
+}
+
+func loadTasks() {
+	fmt.Println("📂 Loading tasks from file...")
+	
+	tasks, err := jsonStorage.Load()
+	if err != nil {
+		handleError(err, "Failed to load tasks")
+		return
+	}
+	
+	// Clear current store
+	store = task.NewTaskStore()
+	
+	// Populate store
+	for _, t := range tasks {
+		store.Add(t.Title)
+		if task, exists := store.Tasks[t.ID]; exists {
+			task.Completed = t.Completed
+			task.Priority = t.Priority
+			task.Tags = t.Tags
+			task.CreatedAt = t.CreatedAt
+		}
+	}
+	
+	fmt.Printf("✅ Loaded %d tasks from %s\n", len(tasks), appConfig.DataFile)
 }
 
 func createBackup() {
 	fmt.Println("📦 Creating backup...")
 	
-	metadata, err := backupManager.CreateBackup()
+	backupFile, err := jsonStorage.Backup()
 	if err != nil {
-		handleError(err, "Backup failed")
+		handleError(err, "Failed to create backup")
 		return
 	}
 	
-	fmt.Printf("✅ Backup created successfully!\n")
-	fmt.Printf("   File: %s\n", metadata.File)
-	fmt.Printf("   Tasks: %d\n", metadata.TaskCount)
-	fmt.Printf("   Size: %d bytes\n", metadata.Size)
+	info, err := os.Stat(backupFile)
+	if err != nil {
+		fmt.Printf("✅ Backup created: %s\n", backupFile)
+	} else {
+		fmt.Printf("✅ Backup created: %s (%d bytes)\n", backupFile, info.Size())
+	}
 }
 
 func listBackups() {
-	backups, err := backupManager.ListBackups()
+	backups, err := jsonStorage.ListBackups()
 	if err != nil {
 		handleError(err, "Failed to list backups")
 		return
@@ -354,50 +380,83 @@ func listBackups() {
 	}
 	
 	fmt.Println("\n📦 --- BACKUPS ---")
-	for i, b := range backups {
-		fmt.Printf("%d. %s (%s) - %d bytes\n", 
-			i+1, b.File, b.Timestamp.Format("2006-01-02 15:04:05"), b.Size)
+	for i, backup := range backups {
+		info, err := os.Stat(backup)
+		size := "unknown"
+		if err == nil {
+			size = fmt.Sprintf("%d bytes", info.Size())
+		}
+		fmt.Printf("%d. %s (%s)\n", i+1, filepath.Base(backup), size)
 	}
 }
 
 func restoreFromBackup() {
-	listBackups()
-	
-	fmt.Print("Enter backup number to restore (or 0 for latest): ")
-	num := readInt()
-	
-	var err error
-	if num == 0 {
-		err = backupManager.RestoreLatest()
-	} else {
-		backups, _ := backupManager.ListBackups()
-		if num < 1 || num > len(backups) {
-			fmt.Println("Invalid backup number")
-			return
-		}
-		err = backupManager.RestoreBackup(backups[num-1].File)
+	backups, err := jsonStorage.ListBackups()
+	if err != nil || len(backups) == 0 {
+		fmt.Println("No backups available.")
+		return
 	}
 	
-	if err != nil {
+	listBackups()
+	
+	fmt.Print("Enter backup number to restore: ")
+	num := readInt()
+	
+	if num < 1 || num > len(backups) {
+		fmt.Println("Invalid backup number")
+		return
+	}
+	
+	fmt.Printf("Restoring from %s...\n", filepath.Base(backups[num-1]))
+	
+	if err := jsonStorage.Restore(backups[num-1]); err != nil {
 		handleError(err, "Restore failed")
 		return
 	}
 	
-	fmt.Println("✅ Restore successful!")
-	listTasksWithErrorHandling()
+	// Reload tasks
+	loadTasks()
+	fmt.Println("✅ Restore complete!")
 }
 
-func testPanicRecovery() {
-	fmt.Println("💥 Testing panic recovery...")
-	
-	defer func() {
-		if r := recover(); r != nil {
-			fmt.Printf("✅ Panic successfully recovered: %v\n", r)
+func viewFileInfo() {
+	info, err := os.Stat(appConfig.DataFile)
+	if err != nil {
+		if os.IsNotExist(err) {
+			fmt.Printf("File %s does not exist yet.\n", appConfig.DataFile)
+		} else {
+			handleError(err, "Failed to get file info")
 		}
-	}()
+		return
+	}
 	
-	// Deliberately cause a panic
-	panic("This is a test panic - the app will recover!")
+	fmt.Printf("\n📁 File: %s\n", appConfig.DataFile)
+	fmt.Printf("Size: %d bytes\n", info.Size())
+	fmt.Printf("Modified: %s\n", info.ModTime().Format("2006-01-02 15:04:05"))
+	fmt.Printf("Permissions: %s\n", info.Mode())
+	
+	// Count tasks in file
+	tasks, err := jsonStorage.Load()
+	if err != nil {
+		fmt.Printf("Tasks in file: error reading (%v)\n", err)
+	} else {
+		fmt.Printf("Tasks in file: %d\n", len(tasks))
+	}
+}
+
+func handleError(err error, context string) {
+	if err == nil {
+		return
+	}
+	
+	fmt.Printf("\n❌ ERROR: %s\n", context)
+	
+	if appErr, ok := err.(*errors.AppError); ok {
+		fmt.Printf("   Code: %s\n", appErr.Code)
+		fmt.Printf("   Message: %s\n", appErr.Message)
+	} else {
+		fmt.Printf("   %v\n", err)
+	}
 }
 
 func readString() string {

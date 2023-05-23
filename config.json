@@ -1,0 +1,8 @@
+{
+  "data_file": "tasks.json",
+  "backup_dir": "backups",
+  "auto_save": true,
+  "save_interval": 30,
+  "max_backups": 10,
+  "pretty_print": true
+}
