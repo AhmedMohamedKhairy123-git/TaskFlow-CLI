@@ -121,19 +121,34 @@ func startAutoSave() {
 	}
 	
 	autoSaveTicker = time.NewTicker(time.Duration(appConfig.SaveInterval) * time.Second)
+	saveChan := make(chan bool, 1)
 	
+	// Producer: ticker sends signals
 	go func() {
 		for range autoSaveTicker.C {
+			select {
+			case saveChan <- true:
+			default:
+				// Skip if channel is full (already saving)
+			}
+		}
+	}()
+	
+	// Consumer: worker processes saves
+	go func() {
+		for range saveChan {
 			if store != nil {
 				tasks := store.GetAll()
+				fmt.Printf("💾 Auto-saving %d tasks...\n", len(tasks))
+				
 				if err := jsonStorage.Save(tasks); err != nil {
 					fmt.Printf("⚠️ Auto-save failed: %v\n", err)
-				} else {
-					fmt.Printf("💾 Auto-saved %d tasks\n", len(tasks))
 				}
 			}
 		}
 	}()
+	
+	fmt.Println("🔄 Auto-saver started with goroutines and channel")
 }
 
 func runApplication() {
@@ -164,6 +179,7 @@ func showMenu() {
 	fmt.Println("10. Restore from Backup")
 	fmt.Println("11. View File Info")
 	fmt.Println("12. Exit")
+	fmt.Println("13. Test Concurrent Operations")
 	fmt.Print("Enter choice: ")
 }
 
@@ -197,6 +213,8 @@ func processChoiceSafe() bool {
 		viewFileInfo()
 	case 12:
 		return false
+	case 13:
+    testConcurrency()
 	default:
 		fmt.Println("Invalid choice!")
 	}
@@ -468,4 +486,32 @@ func readInt() int {
 	input := readString()
 	val, _ := strconv.Atoi(input)
 	return val
+}
+func testConcurrency() {
+	fmt.Println("\n🧪 Testing Concurrent Operations...")
+	
+	// Create a channel for results
+	results := make(chan string, 5)
+	
+	// Launch multiple goroutines
+	for i := 1; i <= 3; i++ {
+		go func(id int) {
+			// Simulate work
+			time.Sleep(time.Duration(id) * time.Second)
+			results <- fmt.Sprintf("Goroutine %d completed", id)
+		}(i)
+	}
+	
+	// Collect results
+	for i := 1; i <= 3; i++ {
+		select {
+		case result := <-results:
+			fmt.Printf("✅ %s\n", result)
+		case <-time.After(2 * time.Second):
+			fmt.Println("⏱️ Timeout waiting for goroutine")
+		}
+	}
+	
+	close(results)
+	fmt.Println("✅ Concurrency test complete!")
 }
