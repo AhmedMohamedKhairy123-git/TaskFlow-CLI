@@ -8,7 +8,7 @@ import (
 )
 
 type Server struct {
-	store     *task.TaskStore
+	store      *task.TaskStore
 	httpServer *http.Server
 }
 
@@ -18,16 +18,53 @@ func NewServer(store *task.TaskStore) *Server {
 
 func (s *Server) Start(port string) error {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/", s.homeHandler)
-	mux.HandleFunc("/health", s.healthHandler)
-
+	
+	// Wrap all handlers with middleware chain
+	mux.HandleFunc("/", s.loggingMiddleware(
+		s.recoveryMiddleware(
+			s.corsMiddleware(
+				s.rateLimitMiddleware(s.homeHandler)))))
+	
+	mux.HandleFunc("/health", s.loggingMiddleware(
+		s.recoveryMiddleware(s.healthHandler)))
+	
+	mux.HandleFunc("/tasks", s.loggingMiddleware(
+		s.recoveryMiddleware(
+			s.corsMiddleware(
+				s.rateLimitMiddleware(func(w http.ResponseWriter, r *http.Request) {
+					switch r.Method {
+					case http.MethodGet:
+						s.getTasksHandler(w, r)
+					case http.MethodPost:
+						s.createTaskHandler(w, r)
+					default:
+						respondError(w, http.StatusMethodNotAllowed, "Method not allowed")
+					}
+				})))))
+	
+	mux.HandleFunc("/tasks/", s.loggingMiddleware(
+		s.recoveryMiddleware(
+			s.corsMiddleware(
+				s.rateLimitMiddleware(func(w http.ResponseWriter, r *http.Request) {
+					switch r.Method {
+					case http.MethodGet:
+						s.getTaskHandler(w, r)
+					case http.MethodPut:
+						s.updateTaskHandler(w, r)
+					case http.MethodDelete:
+						s.deleteTaskHandler(w, r)
+					default:
+						respondError(w, http.StatusMethodNotAllowed, "Method not allowed")
+					}
+				})))))
+	
 	s.httpServer = &http.Server{
 		Addr:         ":" + port,
 		Handler:      mux,
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
 	}
-
+	
 	fmt.Printf("🚀 Server starting on port %s\n", port)
 	return s.httpServer.ListenAndServe()
 }
@@ -38,6 +75,8 @@ func (s *Server) homeHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "<p>Available endpoints:</p>")
 	fmt.Fprintf(w, "<ul>")
 	fmt.Fprintf(w, "<li><a href='/health'>/health</a> - Health check</li>")
+	fmt.Fprintf(w, "<li><a href='/tasks'>/tasks</a> - Get all tasks (GET) or Create task (POST)</li>")
+	fmt.Fprintf(w, "<li>/tasks/{id} - Get, Update, Delete specific task</li>")
 	fmt.Fprintf(w, "</ul>")
 }
 
