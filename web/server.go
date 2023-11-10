@@ -18,16 +18,18 @@ func NewServer(store *task.TaskStore) *Server {
 
 func (s *Server) Start(port string) error {
 	mux := http.NewServeMux()
-	
-	// Wrap all handlers with middleware chain
+
+	// 1. Home Route
 	mux.HandleFunc("/", s.loggingMiddleware(
 		s.recoveryMiddleware(
 			s.corsMiddleware(
 				s.rateLimitMiddleware(s.homeHandler)))))
-	
+
+	// 2. Health Check Route
 	mux.HandleFunc("/health", s.loggingMiddleware(
 		s.recoveryMiddleware(s.healthHandler)))
-	
+
+	// 3. Global Tasks Route (GET all / POST new)
 	mux.HandleFunc("/tasks", s.loggingMiddleware(
 		s.recoveryMiddleware(
 			s.corsMiddleware(
@@ -41,11 +43,14 @@ func (s *Server) Start(port string) error {
 						respondError(w, http.StatusMethodNotAllowed, "Method not allowed")
 					}
 				})))))
-	
+
+	// 4. Specific Task Route (Integrated Version with Middleware)
+	// This handles /tasks/{id}
 	mux.HandleFunc("/tasks/", s.loggingMiddleware(
 		s.recoveryMiddleware(
 			s.corsMiddleware(
 				s.rateLimitMiddleware(func(w http.ResponseWriter, r *http.Request) {
+					// Method Switching Logic
 					switch r.Method {
 					case http.MethodGet:
 						s.getTaskHandler(w, r)
@@ -57,17 +62,19 @@ func (s *Server) Start(port string) error {
 						respondError(w, http.StatusMethodNotAllowed, "Method not allowed")
 					}
 				})))))
-	
+
 	s.httpServer = &http.Server{
 		Addr:         ":" + port,
 		Handler:      mux,
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
 	}
-	
+
 	fmt.Printf("🚀 Server starting on port %s\n", port)
 	return s.httpServer.ListenAndServe()
 }
+
+// --- Handlers ---
 
 func (s *Server) homeHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")

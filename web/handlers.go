@@ -1,58 +1,62 @@
-package web
-
-import (
-	"encoding/json"
-	"net/http"
-	"strconv"
-	"strings"
-	"task-tracker/task"
-)
-
-func (s *Server) getTasksHandler(w http.ResponseWriter, r *http.Request) {
-	tasks := s.store.GetAll()
-	response := make([]TaskResponse, len(tasks))
-	
-	for i, t := range tasks {
-		response[i] = toTaskResponse(t)
+func (s *Server) getTaskHandler(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid task ID")
+		return
 	}
 	
-	respondJSON(w, http.StatusOK, response)
+	t, err := s.store.Get(id)
+	if err != nil {
+		respondError(w, http.StatusNotFound, "Task not found")
+		return
+	}
+	
+	respondJSON(w, http.StatusOK, toTaskResponse(t))
 }
 
-func (s *Server) createTaskHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Server) updateTaskHandler(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid task ID")
+		return
+	}
+	
 	var req CreateTaskRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
 	
-	if req.Title == "" {
-		respondError(w, http.StatusBadRequest, "Title is required")
-		return
-	}
-	
-	newTask, err := s.store.Add(req.Title)
+	task, err := s.store.Get(id)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "Failed to create task")
+		respondError(w, http.StatusNotFound, "Task not found")
 		return
 	}
 	
-	if req.Priority != "" {
-		priorityMap := map[string]task.Priority{
-			"low":      task.Low,
-			"medium":   task.Medium,
-			"high":     task.High,
-			"critical": task.Critical,
-		}
-		if p, ok := priorityMap[strings.ToLower(req.Priority)]; ok {
-			s.store.SetPriority(newTask.ID, p)
-		}
+	if req.Title != "" {
+		task.Title = req.Title
 	}
 	
-	for _, tag := range req.Tags {
-		s.store.AddTag(newTask.ID, tag)
+	s.store.Update(id, task)
+	respondJSON(w, http.StatusOK, toTaskResponse(task))
+}
+
+func (s *Server) deleteTaskHandler(w http.ResponseWriter, r *http.Request) {
+	id, err := parseID(r)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "Invalid task ID")
+		return
 	}
 	
-	task, _ := s.store.Get(newTask.ID)
-	respondJSON(w, http.StatusCreated, toTaskResponse(task))
+	if err := s.store.Delete(id); err != nil {
+		respondError(w, http.StatusNotFound, "Task not found")
+		return
+	}
+	
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func parseID(r *http.Request) (int, error) {
+	path := strings.TrimPrefix(r.URL.Path, "/tasks/")
+	return strconv.Atoi(path)
 }
