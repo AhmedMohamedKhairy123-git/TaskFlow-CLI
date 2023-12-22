@@ -2,16 +2,19 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
-	"path/filepath"
+	"os/signal"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 	"task-tracker/config"
 	"task-tracker/errors"
 	"task-tracker/storage"
 	"task-tracker/task"
+	"task-tracker/web"
 )
 
 var (
@@ -28,6 +31,7 @@ func main() {
 	defer handlePanic()
 	initializeApp()
 	startAutoSave()
+	startWebServer() // NEW: Start web server
 	runApplication()
 }
 
@@ -37,7 +41,6 @@ func handlePanic() {
 		fmt.Printf("\n🔥 CRITICAL: Application recovered from panic!\n")
 		fmt.Printf("Recovery ID: %s\n", rec.ID)
 		
-		// Emergency save
 		if store != nil && jsonStorage != nil {
 			fmt.Println("Attempting emergency save...")
 			tasks := store.GetAll()
@@ -50,23 +53,44 @@ func handlePanic() {
 	}
 }
 
+// NEW: Start web server with graceful shutdown
+func startWebServer() {
+	server := web.NewServer(store)
+	
+	// Graceful shutdown on Ctrl+C
+	go func() {
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+		<-sigChan
+		
+		fmt.Println("\n🛑 Shutting down web server...")
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		
+		if err := server.Stop(); err != nil {
+			fmt.Printf("Error stopping server: %v\n", err)
+		}
+	}()
+	
+	// Start server in background
+	go func() {
+		if err := server.Start("8080"); err != nil {
+			fmt.Printf("Server error: %v\n", err)
+		}
+	}()
+	
+	fmt.Println("🌐 Web API available at http://localhost:8080")
+	fmt.Println("   Try: curl http://localhost:8080/tasks")
+}
+
 func initializeApp() {
-	fmt.Println("🚀 Initializing Task Tracker with File I/O")
+	fmt.Println("🚀 Initializing Task Tracker")
 	
-	// Load configuration
 	loadConfig()
-	
-	// Initialize storage
 	initStorage()
-	
-	// Initialize components
 	store = task.NewTaskStore()
 	validator = task.NewValidator()
-	
-	// Load tasks from file
 	loadTasksFromFile()
-	
-	// Initialize backup manager with storage
 	backupManager = task.NewBackupManager(store, appConfig.BackupDir)
 	
 	fmt.Println("✅ Initialization complete!")
@@ -80,7 +104,6 @@ func loadConfig() {
 		appConfig = config.DefaultConfig()
 	}
 	
-	// Save config if it doesn't exist
 	if _, err := os.Stat("config.json"); os.IsNotExist(err) {
 		appConfig.Save("config.json")
 	}
@@ -100,10 +123,8 @@ func loadTasksFromFile() {
 		return
 	}
 	
-	// Populate store
 	for _, t := range tasks {
 		store.Add(t.Title)
-		// Restore additional properties
 		if task, exists := store.Tasks[t.ID]; exists {
 			task.Completed = t.Completed
 			task.Priority = t.Priority
@@ -123,24 +144,19 @@ func startAutoSave() {
 	autoSaveTicker = time.NewTicker(time.Duration(appConfig.SaveInterval) * time.Second)
 	saveChan := make(chan bool, 1)
 	
-	// Producer: ticker sends signals
 	go func() {
 		for range autoSaveTicker.C {
 			select {
 			case saveChan <- true:
 			default:
-				// Skip if channel is full (already saving)
 			}
 		}
 	}()
 	
-	// Consumer: worker processes saves
 	go func() {
 		for range saveChan {
 			if store != nil {
 				tasks := store.GetAll()
-				fmt.Printf("💾 Auto-saving %d tasks...\n", len(tasks))
-				
 				if err := jsonStorage.Save(tasks); err != nil {
 					fmt.Printf("⚠️ Auto-save failed: %v\n", err)
 				}
@@ -148,7 +164,7 @@ func startAutoSave() {
 		}
 	}()
 	
-	fmt.Println("🔄 Auto-saver started with goroutines and channel")
+	fmt.Println("🔄 Auto-saver started")
 }
 
 func runApplication() {
@@ -160,13 +176,12 @@ func runApplication() {
 		}
 	}
 	
-	// Save before exit
 	saveTasks()
 	fmt.Println("👋 Goodbye!")
 }
 
 func showMenu() {
-	fmt.Println("\n💾 === TASK TRACKER (File I/O) ===")
+	fmt.Println("\n📋 === TASK TRACKER MENU ===")
 	fmt.Println("1. Add Task")
 	fmt.Println("2. List Tasks")
 	fmt.Println("3. Mark Task Complete")
@@ -175,11 +190,7 @@ func showMenu() {
 	fmt.Println("6. Save Tasks")
 	fmt.Println("7. Load Tasks")
 	fmt.Println("8. Create Backup")
-	fmt.Println("9. List Backups")
-	fmt.Println("10. Restore from Backup")
-	fmt.Println("11. View File Info")
-	fmt.Println("12. Exit")
-	fmt.Println("13. Test Concurrent Operations")
+	fmt.Println("9. Exit")
 	fmt.Print("Enter choice: ")
 }
 
@@ -206,15 +217,7 @@ func processChoiceSafe() bool {
 	case 8:
 		createBackup()
 	case 9:
-		listBackups()
-	case 10:
-		restoreFromBackup()
-	case 11:
-		viewFileInfo()
-	case 12:
 		return false
-	case 13:
-    testConcurrency()
 	default:
 		fmt.Println("Invalid choice!")
 	}
@@ -243,10 +246,6 @@ func addTask() {
 	}
 	
 	fmt.Printf("✅ Task added with ID: %d\n", task.ID)
-	
-	if appConfig.AutoSave {
-		saveTasks()
-	}
 }
 
 func listTasks() {
@@ -276,10 +275,6 @@ func markComplete() {
 	}
 	
 	fmt.Println("✅ Task marked as complete!")
-	
-	if appConfig.AutoSave {
-		saveTasks()
-	}
 }
 
 func setPriority() {
@@ -332,14 +327,7 @@ func saveTasks() {
 		return
 	}
 	
-	// Get file info
-	info, err := os.Stat(appConfig.DataFile)
-	if err != nil {
-		fmt.Printf("✅ Saved %d tasks to %s\n", len(tasks), appConfig.DataFile)
-	} else {
-		fmt.Printf("✅ Saved %d tasks to %s (%d bytes)\n", 
-			len(tasks), appConfig.DataFile, info.Size())
-	}
+	fmt.Printf("✅ Saved %d tasks to %s\n", len(tasks), appConfig.DataFile)
 }
 
 func loadTasks() {
@@ -351,10 +339,8 @@ func loadTasks() {
 		return
 	}
 	
-	// Clear current store
 	store = task.NewTaskStore()
 	
-	// Populate store
 	for _, t := range tasks {
 		store.Add(t.Title)
 		if task, exists := store.Tasks[t.ID]; exists {
@@ -377,89 +363,7 @@ func createBackup() {
 		return
 	}
 	
-	info, err := os.Stat(backupFile)
-	if err != nil {
-		fmt.Printf("✅ Backup created: %s\n", backupFile)
-	} else {
-		fmt.Printf("✅ Backup created: %s (%d bytes)\n", backupFile, info.Size())
-	}
-}
-
-func listBackups() {
-	backups, err := jsonStorage.ListBackups()
-	if err != nil {
-		handleError(err, "Failed to list backups")
-		return
-	}
-	
-	if len(backups) == 0 {
-		fmt.Println("No backups found.")
-		return
-	}
-	
-	fmt.Println("\n📦 --- BACKUPS ---")
-	for i, backup := range backups {
-		info, err := os.Stat(backup)
-		size := "unknown"
-		if err == nil {
-			size = fmt.Sprintf("%d bytes", info.Size())
-		}
-		fmt.Printf("%d. %s (%s)\n", i+1, filepath.Base(backup), size)
-	}
-}
-
-func restoreFromBackup() {
-	backups, err := jsonStorage.ListBackups()
-	if err != nil || len(backups) == 0 {
-		fmt.Println("No backups available.")
-		return
-	}
-	
-	listBackups()
-	
-	fmt.Print("Enter backup number to restore: ")
-	num := readInt()
-	
-	if num < 1 || num > len(backups) {
-		fmt.Println("Invalid backup number")
-		return
-	}
-	
-	fmt.Printf("Restoring from %s...\n", filepath.Base(backups[num-1]))
-	
-	if err := jsonStorage.Restore(backups[num-1]); err != nil {
-		handleError(err, "Restore failed")
-		return
-	}
-	
-	// Reload tasks
-	loadTasks()
-	fmt.Println("✅ Restore complete!")
-}
-
-func viewFileInfo() {
-	info, err := os.Stat(appConfig.DataFile)
-	if err != nil {
-		if os.IsNotExist(err) {
-			fmt.Printf("File %s does not exist yet.\n", appConfig.DataFile)
-		} else {
-			handleError(err, "Failed to get file info")
-		}
-		return
-	}
-	
-	fmt.Printf("\n📁 File: %s\n", appConfig.DataFile)
-	fmt.Printf("Size: %d bytes\n", info.Size())
-	fmt.Printf("Modified: %s\n", info.ModTime().Format("2006-01-02 15:04:05"))
-	fmt.Printf("Permissions: %s\n", info.Mode())
-	
-	// Count tasks in file
-	tasks, err := jsonStorage.Load()
-	if err != nil {
-		fmt.Printf("Tasks in file: error reading (%v)\n", err)
-	} else {
-		fmt.Printf("Tasks in file: %d\n", len(tasks))
-	}
+	fmt.Printf("✅ Backup created: %s\n", backupFile)
 }
 
 func handleError(err error, context string) {
@@ -486,32 +390,4 @@ func readInt() int {
 	input := readString()
 	val, _ := strconv.Atoi(input)
 	return val
-}
-func testConcurrency() {
-	fmt.Println("\n🧪 Testing Concurrent Operations...")
-	
-	// Create a channel for results
-	results := make(chan string, 5)
-	
-	// Launch multiple goroutines
-	for i := 1; i <= 3; i++ {
-		go func(id int) {
-			// Simulate work
-			time.Sleep(time.Duration(id) * time.Second)
-			results <- fmt.Sprintf("Goroutine %d completed", id)
-		}(i)
-	}
-	
-	// Collect results
-	for i := 1; i <= 3; i++ {
-		select {
-		case result := <-results:
-			fmt.Printf("✅ %s\n", result)
-		case <-time.After(2 * time.Second):
-			fmt.Println("⏱️ Timeout waiting for goroutine")
-		}
-	}
-	
-	close(results)
-	fmt.Println("✅ Concurrency test complete!")
 }

@@ -18,72 +18,61 @@ func NewServer(store *task.TaskStore) *Server {
 
 func (s *Server) Start(port string) error {
 	mux := http.NewServeMux()
-
-	// 1. Home Route
-	mux.HandleFunc("/", s.loggingMiddleware(
-		s.recoveryMiddleware(
-			s.corsMiddleware(
-				s.rateLimitMiddleware(s.homeHandler)))))
-
-	// 2. Health Check Route
-	mux.HandleFunc("/health", s.loggingMiddleware(
-		s.recoveryMiddleware(s.healthHandler)))
-
-	// 3. Global Tasks Route (GET all / POST new)
-	mux.HandleFunc("/tasks", s.loggingMiddleware(
-		s.recoveryMiddleware(
-			s.corsMiddleware(
-				s.rateLimitMiddleware(func(w http.ResponseWriter, r *http.Request) {
-					switch r.Method {
-					case http.MethodGet:
-						s.getTasksHandler(w, r)
-					case http.MethodPost:
-						s.createTaskHandler(w, r)
-					default:
-						respondError(w, http.StatusMethodNotAllowed, "Method not allowed")
-					}
-				})))))
-
-	// 4. Specific Task Route (Integrated Version with Middleware)
-	// This handles /tasks/{id}
-	mux.HandleFunc("/tasks/", s.loggingMiddleware(
-		s.recoveryMiddleware(
-			s.corsMiddleware(
-				s.rateLimitMiddleware(func(w http.ResponseWriter, r *http.Request) {
-					// Method Switching Logic
-					switch r.Method {
-					case http.MethodGet:
-						s.getTaskHandler(w, r)
-					case http.MethodPut:
-						s.updateTaskHandler(w, r)
-					case http.MethodDelete:
-						s.deleteTaskHandler(w, r)
-					default:
-						respondError(w, http.StatusMethodNotAllowed, "Method not allowed")
-					}
-				})))))
-
+	
+	// Home page
+	mux.HandleFunc("/", s.homeHandler)
+	
+	// Health check
+	mux.HandleFunc("/health", s.healthHandler)
+	
+	// Tasks collection
+	mux.HandleFunc("/tasks", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			s.getTasksHandler(w, r)
+		case http.MethodPost:
+			s.createTaskHandler(w, r)
+		default:
+			respondError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		}
+	})
+	
+	// Single task
+	mux.HandleFunc("/tasks/", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			s.getTaskHandler(w, r)
+		case http.MethodPut:
+			s.updateTaskHandler(w, r)
+		case http.MethodDelete:
+			s.deleteTaskHandler(w, r)
+		default:
+			respondError(w, http.StatusMethodNotAllowed, "Method not allowed")
+		}
+	})
+	
 	s.httpServer = &http.Server{
 		Addr:         ":" + port,
 		Handler:      mux,
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
 	}
-
-	fmt.Printf("🚀 Server starting on port %s\n", port)
+	
+	fmt.Printf("🚀 Web server starting on port %s\n", port)
 	return s.httpServer.ListenAndServe()
 }
-
-// --- Handlers ---
 
 func (s *Server) homeHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
 	fmt.Fprintf(w, "<h1>Task Tracker API</h1>")
 	fmt.Fprintf(w, "<p>Available endpoints:</p>")
 	fmt.Fprintf(w, "<ul>")
-	fmt.Fprintf(w, "<li><a href='/health'>/health</a> - Health check</li>")
-	fmt.Fprintf(w, "<li><a href='/tasks'>/tasks</a> - Get all tasks (GET) or Create task (POST)</li>")
-	fmt.Fprintf(w, "<li>/tasks/{id} - Get, Update, Delete specific task</li>")
+	fmt.Fprintf(w, "<li>GET /health - Health check</li>")
+	fmt.Fprintf(w, "<li>GET /tasks - List all tasks</li>")
+	fmt.Fprintf(w, "<li>POST /tasks - Create new task</li>")
+	fmt.Fprintf(w, "<li>GET /tasks/{id} - Get specific task</li>")
+	fmt.Fprintf(w, "<li>PUT /tasks/{id} - Update task</li>")
+	fmt.Fprintf(w, "<li>DELETE /tasks/{id} - Delete task</li>")
 	fmt.Fprintf(w, "</ul>")
 }
 
