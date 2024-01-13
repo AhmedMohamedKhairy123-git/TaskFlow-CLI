@@ -65,11 +65,12 @@ func startWebServer() {
 		
 		fmt.Println("\n🛑 Shutting down web server...")
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		
-		if err := server.Stop(); err != nil {
-			fmt.Printf("Error stopping server: %v\n", err)
-		}
+defer cancel()
+
+// Use ctx in Stop method
+if err := server.Stop(ctx); err != nil {
+    fmt.Printf("Error stopping server: %v\n", err)
+}
 	}()
 	
 	// Start server in background

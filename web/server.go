@@ -1,6 +1,7 @@
 package web
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"task-tracker/task"
@@ -82,9 +83,9 @@ func (s *Server) healthHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, `{"status": "ok", "time": "%s"}`, time.Now().Format(time.RFC3339))
 }
 
-func (s *Server) Stop() error {
-	if s.httpServer != nil {
-		return s.httpServer.Close()
-	}
-	return nil
+func (s *Server) Stop(ctx context.Context) error {
+    if s.httpServer != nil {
+        return s.httpServer.Shutdown(ctx)
+    }
+    return nil
 }
