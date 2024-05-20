@@ -45,12 +45,14 @@ func (p Priority) Color() string {
 }
 
 type Task struct {
-	ID        int
-	Title     string
-	Completed bool
-	Priority  Priority
-	CreatedAt time.Time
-	Tags      []string
+	ID           int
+	Title        string
+	Completed    bool
+	Priority     Priority
+	CreatedAt    time.Time
+	Tags         []string
+	Reminder     *Reminder      `json:"reminder,omitempty"`
+	Dependencies []Dependency   `json:"dependencies,omitempty"`
 }
 
 func NewTask(id int, title string) *Task {
