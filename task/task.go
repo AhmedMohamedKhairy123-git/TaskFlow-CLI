@@ -51,8 +51,10 @@ type Task struct {
 	Priority     Priority
 	CreatedAt    time.Time
 	Tags         []string
-	Reminder     *Reminder      `json:"reminder,omitempty"`
-	Dependencies []Dependency   `json:"dependencies,omitempty"`
+	Reminder     *Reminder
+	Dependencies []Dependency
+	Notes        []Note        `json:"notes,omitempty"`       // Add this
+	Attachments  []Attachment  `json:"attachments,omitempty"` // Add this
 }
 
 func NewTask(id int, title string) *Task {
