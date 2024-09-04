@@ -24,8 +24,11 @@ type SharedTask struct {
 	ShareLink   string
 }
 
-type ShareStore struct {
-	shares map[string]SharedTask
+type TaskStore struct {
+	Tasks      map[int]*Task
+	NextID     int
+	history    *HistoryStore
+	shareStore *ShareStore  // Add this
 }
 
 func NewShareStore() *ShareStore {
