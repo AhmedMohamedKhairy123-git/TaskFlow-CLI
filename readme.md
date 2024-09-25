@@ -80,8 +80,149 @@ task-tracker/
 - ✅ WaitGroup coordination
 - ✅ Race condition prevention
 
+# Phase 8 & 9: Web API + Advanced Features
 
+## 🚀 Phase 8: Web API (6 Mini-Phases)
 
+### 8.1 Basic HTTP Server
+- Simple HTTP server with `/` and `/health` endpoints
+- Graceful shutdown support
+- Timeout configurations
+
+### 8.2 API Models
+- JSON request/response structs
+- TaskResponse, CreateTaskRequest, ErrorResponse
+- Helper functions for JSON responses
+
+### 8.3 Task Handlers
+- `GET /tasks` - List all tasks
+- `POST /tasks` - Create new task
+- JSON request body parsing
+
+### 8.4 Single Task Operations
+- `GET /tasks/{id}` - Get specific task
+- `PUT /tasks/{id}` - Update task
+- `DELETE /tasks/{id}` - Delete task
+- Path parameter parsing
+
+### 8.5 Middleware
+- Logging middleware (request/response timing)
+- Panic recovery middleware
+- CORS middleware for cross-origin requests
+- Rate limiting (10 concurrent requests)
+
+### 8.6 Integration
+- Web server starts alongside CLI
+- Graceful shutdown with context timeout
+- Background goroutine for server
+- Signal handling (Ctrl+C)
+
+## 🔥 Phase 9: Advanced Features (10 Mini-Phases)
+
+### 9.1 Search & Filter
+
+```go
+criteria := SearchCriteria{
+    Title:     "meeting",
+    Completed: false,
+    Priority:  []Priority{High, Critical},
+    Tags:      []string{"work"},
+}
+results := store.Search(criteria)
+```
+## 9.2 Analytics & Statistics
+- Completion rates
+
+- Priority distribution
+
+- Tag frequency analysis
+
+- Average tasks per day
+
+- Oldest/newest task tracking
+
+## 9.3 Export/Import
+- JSON export with pretty print
+
+- CSV export for spreadsheet apps
+
+- Text format for readability
+
+- Import from CSV
+
+## 9.4 Reminders & Due Dates
+- Set due dates for tasks
+
+- Repeat options (daily, weekly, monthly)
+
++ Automatic reminder checking
+
++ Overdue task detection
+
+## 9.5 Task Dependencies
+- Blocked/depends-on relationships
+
+- Circular dependency detection
+
+- Get blocked tasks list
+
+- Find dependent tasks
+
+## 9.6 History & Audit Log
+- Track all task actions
+
+- Before/after change tracking
+
+- Timestamp for each action
+
+- Export history to JSON
+
+## 9.7 Bulk Operations
+- Add multiple tasks at once
+
+- Complete multiple tasks
+
+- Delete multiple tasks
+
+- Parallel processing with goroutines
+
+## 9.8 Task Templates
+- Predefined task templates
+
+- Meeting template with subtasks
+
+-  Project template with checklist
+
+- Save/load templates from file
+
+## 9.9 Notes & Attachments
+- Add text notes to tasks
+
+- File attachments support
+
+- Multiple notes per task
+
+- Attachment metadata tracking
+
+## 9.10 Sharing & Collaboration
+-  Generate share links
+
+- Permission levels (view/edit/admin)
+
+- Expiring shares
+
+- Revoke sharing access
+
+## 🌐 API Endpoints Summary
+```text
+GET    /health           # Health check
+GET    /tasks            # List all tasks
+POST   /tasks            # Create new task
+GET    /tasks/{id}       # Get specific task
+PUT    /tasks/{id}       # Update task
+DELETE /tasks/{id}       # Delete task
+📦 New Packages Added
+```
 ## 🧠 Design Patterns Used
 
 | Pattern | Implementation |
