@@ -2,9 +2,10 @@ package task
 
 import (
 	"fmt"
+	"runtime"  // Add this
+	"sync"     // Add this
 	"time"
 )
-
 type Priority int
 
 const (
@@ -113,4 +114,83 @@ func (t *Task) DisplaySimple() string {
 		status = "✓"
 	}
 	return fmt.Sprintf("[%s] %d: %s", status, t.ID, t.Title)
+}
+// Add to task/task.go
+
+// Use sync.Pool for temporary objects
+var taskPool = sync.Pool{
+	New: func() interface{} {
+		return &Task{
+			Tags:         make([]string, 0, 5),
+			Dependencies: make([]Dependency, 0, 2),
+			Notes:        make([]Note, 0, 3),
+		}
+	},
+}
+
+// Optimized Task creation with pooling
+func NewTaskOptimized(id int, title string) *Task {
+	task := taskPool.Get().(*Task)
+	task.ID = id
+	task.Title = title
+	task.Completed = false
+	task.Priority = Low
+	task.CreatedAt = time.Now()
+	task.Tags = task.Tags[:0]
+	task.Dependencies = task.Dependencies[:0]
+	task.Notes = task.Notes[:0]
+	task.Attachments = task.Attachments[:0]
+	task.Reminder = nil
+	return task
+}
+
+// Return task to pool
+func ReleaseTask(task *Task) {
+	task.Title = ""
+	task.Tags = nil
+	task.Dependencies = nil
+	task.Notes = nil
+	task.Attachments = nil
+	task.Reminder = nil
+	taskPool.Put(task)
+}
+
+// Add memory stats
+type MemoryStats struct {
+	HeapAlloc    uint64
+	HeapObjects  uint64
+	NumGC        uint32
+	LastGC       time.Time
+}
+
+func GetMemoryStats() MemoryStats {
+	var m runtime.MemStats
+	runtime.ReadMemStats(&m)
+	
+	return MemoryStats{
+		HeapAlloc:   m.HeapAlloc / 1024 / 1024, // MB
+		HeapObjects: m.HeapObjects,
+		NumGC:       m.NumGC,
+		LastGC:      time.Unix(0, int64(m.LastGC)),
+	}
+}
+
+// Add to TaskStore
+func (s *TaskStore) OptimizeMemory() {
+	// Force GC if needed
+	if len(s.Tasks) > 10000 {
+		runtime.GC()
+	}
+	
+	// Clear expired cache
+	s.cache.cleanupLoop()
+	
+	// Compact maps if needed
+	if len(s.Tasks) < cap(s.Tasks) {
+		newMap := make(map[int]*Task, len(s.Tasks))
+		for k, v := range s.Tasks {
+			newMap[k] = v
+		}
+		s.Tasks = newMap
+	}
 }
