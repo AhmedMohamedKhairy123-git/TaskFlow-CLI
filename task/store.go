@@ -221,3 +221,95 @@ func (s *TaskStore) DisplayStats() {
 	}
 	fmt.Println("-------------------")
 }
+// Add to task/store.go
+
+type LazyLoader struct {
+	loaded    bool
+	loadFn    func() (interface{}, error)
+	value     interface{}
+	mu        sync.RWMutex
+}
+
+func NewLazyLoader(loadFn func() (interface{}, error)) *LazyLoader {
+	return &LazyLoader{
+		loadFn: loadFn,
+	}
+}
+
+func (l *LazyLoader) Get() (interface{}, error) {
+	l.mu.RLock()
+	if l.loaded {
+		defer l.mu.RUnlock()
+		return l.value, nil
+	}
+	l.mu.RUnlock()
+	
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	
+	if l.loaded {
+		return l.value, nil
+	}
+	
+	value, err := l.loadFn()
+	if err != nil {
+		return nil, err
+	}
+	
+	l.value = value
+	l.loaded = true
+	return value, nil
+}
+
+// Add lazy loading to TaskStore
+type TaskStore struct {
+	Tasks      map[int]*Task
+	NextID     int
+	history    *HistoryStore
+	shareStore *ShareStore
+	cache      *TaskCache
+	lazyStats  *LazyLoader  // Add this
+}
+
+func (s *TaskStore) GetAnalyticsLazy() Analytics {
+	if s.lazyStats == nil {
+		s.lazyStats = NewLazyLoader(func() (interface{}, error) {
+			return s.GetAnalytics(), nil
+		})
+	}
+	
+	result, _ := s.lazyStats.Get()
+	return result.(Analytics)
+}
+
+// Add pagination with lazy loading
+func (s *TaskStore) GetTasksPage(offset, limit int) []Task {
+	if offset >= len(s.Tasks) {
+		return []Task{}
+	}
+	
+	var page []Task
+	count := 0
+	for _, task := range s.Tasks {
+		if count >= offset && count < offset+limit {
+			page = append(page, *task)
+		}
+		count++
+		if count >= offset+limit {
+			break
+		}
+	}
+	
+	return page
+}
+
+// Add lazy loading for attachments
+func (s *TaskStore) LoadAttachmentsLazy(taskID int) *LazyLoader {
+	return NewLazyLoader(func() (interface{}, error) {
+		task, exists := s.Tasks[taskID]
+		if !exists {
+			return nil, fmt.Errorf("task not found")
+		}
+		return task.Attachments, nil
+	})
+}
