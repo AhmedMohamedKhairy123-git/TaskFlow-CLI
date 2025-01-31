@@ -313,3 +313,120 @@ func (s *TaskStore) LoadAttachmentsLazy(taskID int) *LazyLoader {
 		return task.Attachments, nil
 	})
 }
+// Add to task/store.go
+
+type IndexType string
+
+const (
+	IndexByID       IndexType = "id"
+	IndexByPriority IndexType = "priority"
+	IndexByTag      IndexType = "tag"
+	IndexByComplete IndexType = "complete"
+)
+
+type Index struct {
+	values map[interface{}][]int
+	mu     sync.RWMutex
+}
+
+func NewIndex() *Index {
+	return &Index{
+		values: make(map[interface{}][]int),
+	}
+}
+
+func (i *Index) Add(key interface{}, id int) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	i.values[key] = append(i.values[key], id)
+}
+
+func (i *Index) Remove(key interface{}, id int) {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	
+	ids := i.values[key]
+	for j, existingID := range ids {
+		if existingID == id {
+			i.values[key] = append(ids[:j], ids[j+1:]...)
+			break
+		}
+	}
+}
+
+func (i *Index) Get(key interface{}) []int {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+	return i.values[key]
+}
+
+// Add indexes to TaskStore
+type TaskStore struct {
+	Tasks        map[int]*Task
+	NextID       int
+	history      *HistoryStore
+	shareStore   *ShareStore
+	cache        *TaskCache
+	lazyStats    *LazyLoader
+	
+	// Indexes
+	priorityIndex *Index
+	tagIndex      *Index
+	completeIndex *Index
+}
+
+func NewTaskStore() *TaskStore {
+	store := &TaskStore{
+		Tasks:         make(map[int]*Task),
+		NextID:        1,
+		cache:         NewTaskCache(5 * time.Minute),
+		priorityIndex: NewIndex(),
+		tagIndex:      NewIndex(),
+		completeIndex: NewIndex(),
+	}
+	return store
+}
+
+// Update Add method to maintain indexes
+func (s *TaskStore) Add(title string) (Task, error) {
+	if title == "" {
+		return Task{}, errors.New("task title cannot be empty")
+	}
+	
+	task := NewTask(s.NextID, title)
+	s.Tasks[task.ID] = task
+	
+	// Update indexes
+	s.priorityIndex.Add(task.Priority, task.ID)
+	s.completeIndex.Add(task.Completed, task.ID)
+	for _, tag := range task.Tags {
+		s.tagIndex.Add(tag, task.ID)
+	}
+	
+	s.NextID++
+	s.cache.Delete("all_tasks")
+	return *task, nil
+}
+
+// Fast lookup using indexes
+func (s *TaskStore) GetByPriorityIndex(priority Priority) []Task {
+	ids := s.priorityIndex.Get(priority)
+	var tasks []Task
+	for _, id := range ids {
+		if task, exists := s.Tasks[id]; exists {
+			tasks = append(tasks, *task)
+		}
+	}
+	return tasks
+}
+
+func (s *TaskStore) GetByTagIndex(tag string) []Task {
+	ids := s.tagIndex.Get(tag)
+	var tasks []Task
+	for _, id := range ids {
+		if task, exists := s.Tasks[id]; exists {
+			tasks = append(tasks, *task)
+		}
+	}
+	return tasks
+}
