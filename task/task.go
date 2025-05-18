@@ -194,3 +194,59 @@ func (s *TaskStore) OptimizeMemory() {
 		s.Tasks = newMap
 	}
 }
+// Add to task/task.go - at the end of file
+
+const (
+	colorReset  = "\033[0m"
+	colorRed    = "\033[31m"
+	colorGreen  = "\033[32m"
+	colorYellow = "\033[33m"
+	colorBlue   = "\033[34m"
+	colorPurple = "\033[35m"
+	colorCyan   = "\033[36m"
+	colorWhite  = "\033[37m"
+	colorBold   = "\033[1m"
+)
+
+func (t *Task) ColorizedDisplay() string {
+	status := "[ ]"
+	statusColor := colorRed
+	
+	if t.Completed {
+		status = "[✓]"
+		statusColor = colorGreen
+	}
+	
+	priorityColor := t.Priority.Color()
+	
+	return fmt.Sprintf("%s%s%s %s%d:%s %s%s%s %s(Priority: %s, Tags: %v)%s",
+		statusColor, status, colorReset,
+		colorBold, t.ID, colorReset,
+		priorityColor, t.Title, colorReset,
+		colorCyan, t.Priority, t.Tags, colorReset)
+}
+
+func (p Priority) Color() string {
+	switch p {
+	case Low:
+		return colorBlue
+	case Medium:
+		return colorYellow
+	case High:
+		return colorRed
+	case Critical:
+		return colorPurple + colorBold
+	default:
+		return colorReset
+	}
+}
+
+func ColorizedStats(stats map[string]interface{}) string {
+	return fmt.Sprintf("%s📊 STATISTICS%s\n"+
+		"%sTotal:%s %d  %sCompleted:%s %d  %sPending:%s %d  %sRate:%s %.1f%%",
+		colorBold+colorCyan, colorReset,
+		colorBlue, colorReset, stats["total"],
+		colorGreen, colorReset, stats["completed"],
+		colorRed, colorReset, stats["pending"],
+		colorYellow, colorReset, stats["completion_rate"])
+}

@@ -249,18 +249,34 @@ func addTask() {
 	fmt.Printf("✅ Task added with ID: %d\n", task.ID)
 }
 
+// Replace listTasks() function
 func listTasks() {
 	tasks := store.GetAll()
 	
 	if len(tasks) == 0 {
-		fmt.Println("No tasks found.")
+		fmt.Println(colorYellow + "📭 No tasks found." + colorReset)
 		return
 	}
 	
-	fmt.Println("\n📋 --- ALL TASKS ---")
+	fmt.Printf("\n%s📋 TASKS%s\n", colorBold+colorCyan, colorReset)
 	for _, t := range tasks {
-		fmt.Println(t.Display())
+		fmt.Println(t.ColorizedDisplay())
 	}
+}
+
+// Replace showMenu() with colored menu
+func showMenu() {
+	fmt.Printf("\n%s🎯 TASK TRACKER MENU%s\n", colorBold+colorPurple, colorReset)
+	fmt.Printf("%s1.%s Add Task\n", colorGreen, colorReset)
+	fmt.Printf("%s2.%s List Tasks\n", colorBlue, colorReset)
+	fmt.Printf("%s3.%s Mark Complete\n", colorGreen, colorReset)
+	fmt.Printf("%s4.%s Set Priority\n", colorYellow, colorReset)
+	fmt.Printf("%s5.%s Add Tag\n", colorCyan, colorReset)
+	fmt.Printf("%s6.%s Save\n", colorWhite, colorReset)
+	fmt.Printf("%s7.%s Load\n", colorWhite, colorReset)
+	fmt.Printf("%s8.%s Backup\n", colorPurple, colorReset)
+	fmt.Printf("%s9.%s Exit%s\n", colorRed, colorReset, colorReset)
+	fmt.Printf("%sChoice:%s ", colorBold, colorReset)
 }
 
 func markComplete() {
