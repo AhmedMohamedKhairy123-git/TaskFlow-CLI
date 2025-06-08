@@ -408,3 +408,77 @@ func readInt() int {
 	val, _ := strconv.Atoi(input)
 	return val
 }
+// Add new helper functions
+func promptString(message string) string {
+	fmt.Printf("%s%s:%s ", colorCyan, message, colorReset)
+	return readString()
+}
+
+func promptInt(message string) int {
+	fmt.Printf("%s%s:%s ", colorYellow, message, colorReset)
+	return readInt()
+}
+
+func promptConfirm(message string) bool {
+	fmt.Printf("%s%s (y/n):%s ", colorPurple, message, colorReset)
+	response := strings.ToLower(readString())
+	return response == "y" || response == "yes"
+}
+
+func promptSelect(message string, options []string) int {
+	fmt.Printf("%s%s:%s\n", colorCyan, message, colorReset)
+	for i, opt := range options {
+		fmt.Printf("  %d. %s\n", i+1, opt)
+	}
+	fmt.Printf("%sChoice:%s ", colorYellow, colorReset)
+	choice := readInt()
+	if choice < 1 || choice > len(options) {
+		return 1
+	}
+	return choice
+}
+
+// Replace addTask()
+func addTask() {
+	title := promptString("Enter task title")
+	
+	if title == "" {
+		fmt.Printf("%s❌ Title cannot be empty!%s\n", colorRed, colorReset)
+		return
+	}
+	
+	task, err := store.Add(title)
+	if err != nil {
+		handleError(err, "Failed to add task")
+		return
+	}
+	
+	fmt.Printf("%s✅ Task added with ID: %d%s\n", colorGreen, task.ID, colorReset)
+	
+	if promptConfirm("Add priority now?") {
+		options := []string{"Low", "Medium", "High", "Critical"}
+		choice := promptSelect("Select priority", options)
+		store.SetPriority(task.ID, Priority(choice-1))
+	}
+}
+
+// Replace deleteTask()
+func deleteTask() {
+	listTasks()
+	
+	if len(store.GetAll()) == 0 {
+		return
+	}
+	
+	id := promptInt("Enter task ID to delete")
+	
+	if promptConfirm(fmt.Sprintf("Delete task %d?", id)) {
+		err := store.Delete(id)
+		if err != nil {
+			handleError(err, "Failed to delete")
+			return
+		}
+		fmt.Printf("%s✅ Task deleted!%s\n", colorGreen, colorReset)
+	}
+}
+
