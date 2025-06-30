@@ -482,3 +482,20 @@ func deleteTask() {
 	}
 }
 
+// Replace exit handling
+func runApplication() {
+	for {
+		showMenu()
+		
+		if !processChoiceSafe() {
+			if promptConfirm("Really exit?") {
+				break
+			}
+		}
+	}
+	
+	if promptConfirm("Save before exit?") {
+		saveTasks()
+	}
+	fmt.Printf("%s👋 Goodbye!%s\n", colorCyan, colorReset)
+}
