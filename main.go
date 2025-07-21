@@ -499,3 +499,97 @@ func runApplication() {
 	}
 	fmt.Printf("%s👋 Goodbye!%s\n", colorCyan, colorReset)
 }
+// Add command history and completion
+var commandHistory []string
+var historyIndex = -1
+
+type Command struct {
+	Name        string
+	Description string
+	Handler     func(args []string)
+}
+
+var commands = map[string]Command{
+	"add":      {"add", "Add a new task", addTask},
+	"list":     {"list", "List all tasks", func([]string) { listTasks() }},
+	"complete": {"complete", "Mark task complete", func(args []string) { 
+		if len(args) > 0 {
+			id, _ := strconv.Atoi(args[0])
+			store.MarkComplete(id)
+		}
+	}},
+	"priority": {"priority", "Set priority", nil},
+	"tag":      {"tag", "Add tag", nil},
+	"save":     {"save", "Save tasks", func([]string) { saveTasks() }},
+	"exit":     {"exit", "Exit program", func([]string) { 
+		os.Exit(0) 
+	}},
+}
+
+func showHelp() {
+	fmt.Printf("\n%s📚 Available Commands:%s\n", colorBold+colorCyan, colorReset)
+	for _, cmd := range commands {
+		fmt.Printf("  %s%-10s%s %s\n", 
+			colorGreen, cmd.Name, colorReset, cmd.Description)
+	}
+}
+
+func processCommand(input string) {
+	parts := strings.Fields(input)
+	if len(parts) == 0 {
+		return
+	}
+	
+	cmdName := strings.ToLower(parts[0])
+	args := parts[1:]
+	
+	// Add to history
+	commandHistory = append(commandHistory, input)
+	historyIndex = len(commandHistory)
+	
+	if cmdName == "help" {
+		showHelp()
+		return
+	}
+	
+	if cmd, exists := commands[cmdName]; exists {
+		if cmd.Handler != nil {
+			cmd.Handler(args)
+		} else {
+			fmt.Printf("%s❌ Command '%s' not fully implemented%s\n", 
+				colorRed, cmdName, colorReset)
+		}
+	} else {
+		fmt.Printf("%s❌ Unknown command: %s%s\n", colorRed, cmdName, colorReset)
+		fmt.Println("Type 'help' for available commands")
+	}
+}
+
+// Replace readString with command handling
+func readString() string {
+	input, _ := reader.ReadString('\n')
+	input = strings.TrimSpace(input)
+	
+	// Handle up/down arrows for history (simplified)
+	if input == "\033[A" { // Up arrow
+		if historyIndex > 0 {
+			historyIndex--
+			return commandHistory[historyIndex]
+		}
+		return ""
+	}
+	
+	return input
+}
+
+// Add command mode toggling
+var commandMode = false
+
+func toggleCommandMode() {
+	commandMode = !commandMode
+	if commandMode {
+		fmt.Printf("%s🔧 Command mode enabled (type 'help')%s\n", colorCyan, colorReset)
+	} else {
+		fmt.Printf("%s🔧 Menu mode enabled%s\n", colorCyan, colorReset)
+	}
+}
