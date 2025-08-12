@@ -593,3 +593,24 @@ func toggleCommandMode() {
 		fmt.Printf("%s🔧 Menu mode enabled%s\n", colorCyan, colorReset)
 	}
 }
+// Replace loadConfig()
+func loadConfig() {
+	// Check for profile flag
+	profile := ProfileDev
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "dev":
+			profile = ProfileDev
+		case "test":
+			profile = ProfileTest
+		case "prod":
+			profile = ProfileProd
+		}
+	}
+	
+	appConfig = LoadProfile(profile)
+	fmt.Printf("%s📋 Loaded %s profile%s\n", colorCyan, profile, colorReset)
+	
+	// Save config
+	appConfig.Save("config.json")
+}
