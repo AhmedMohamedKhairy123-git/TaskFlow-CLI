@@ -184,3 +184,96 @@ func NoProfanity(profanityList []string) ValidationRule {
 		return nil
 	}
 }
+// Add to task/validator.go
+
+// Add XSS prevention
+func sanitizeInput(input string) string {
+	// Replace HTML tags
+	input = strings.ReplaceAll(input, "<", "&lt;")
+	input = strings.ReplaceAll(input, ">", "&gt;")
+	
+	// Remove control characters
+	return strings.Map(func(r rune) rune {
+		if r < 32 && r != '\n' && r != '\t' {
+			return -1
+		}
+		return r
+	}, input)
+}
+
+// Add email validation
+func validateEmail(email string) error {
+	if email == "" {
+		return nil // Optional
+	}
+	
+	if !strings.Contains(email, "@") || !strings.Contains(email, ".") {
+		return errors.NewAppError(
+			errors.ErrValidationFailed,
+			"validateEmail",
+			"invalid email format",
+		)
+	}
+	
+	return nil
+}
+
+// Add URL validation
+func validateURL(url string) error {
+	if url == "" {
+		return nil
+	}
+	
+	if !strings.HasPrefix(url, "http://") && !strings.HasPrefix(url, "https://") {
+		return errors.NewAppError(
+			errors.ErrValidationFailed,
+			"validateURL",
+			"URL must start with http:// or https://",
+		)
+	}
+	
+	return nil
+}
+
+// Add date validation
+func validateDate(date time.Time) error {
+	if date.Year() < 2000 || date.Year() > 2100 {
+		return errors.NewAppError(
+			errors.ErrValidationFailed,
+			"validateDate",
+			"year out of valid range",
+		)
+	}
+	return nil
+}
+
+// Add to Validator struct
+type Validator struct {
+	rules         []ValidationRule
+	sanitizeInput bool // Add this
+}
+
+func NewValidator() *Validator {
+	return &Validator{
+		rules: []ValidationRule{
+			validateTitle,
+			validateTags,
+			validatePriority,
+			validateCreatedAt,
+		},
+		sanitizeInput: true,
+	}
+}
+
+// Add sanitize method
+func (v *Validator) Sanitize(task *Task) {
+	if !v.sanitizeInput {
+		return
+	}
+	
+	task.Title = sanitizeInput(task.Title)
+	
+	for i, tag := range task.Tags {
+		task.Tags[i] = sanitizeInput(tag)
+	}
+}
