@@ -442,8 +442,17 @@ func promptSelect(message string, options []string) int {
 func addTask() {
 	title := promptString("Enter task title")
 	
+	// Sanitize input
+	title = sanitizeInput(title)
+	
 	if title == "" {
 		fmt.Printf("%s❌ Title cannot be empty!%s\n", colorRed, colorReset)
+		return
+	}
+	
+	// Validate length
+	if len(title) < 3 {
+		fmt.Printf("%s❌ Title too short (min 3 chars)%s\n", colorRed, colorReset)
 		return
 	}
 	
