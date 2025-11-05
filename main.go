@@ -614,6 +614,19 @@ func loadConfig() {
 			profile = ProfileTest
 		case "prod":
 			profile = ProfileProd
+		// Add to menu options
+case "undo":
+    if err := undoManager.Undo(); err != nil {
+        fmt.Printf("%s❌ %s%s\n", colorRed, err, colorReset)
+    } else {
+        fmt.Printf("%s↩️ Undo successful%s\n", colorYellow, colorReset)
+    }
+case "redo":
+    if err := undoManager.Redo(); err != nil {
+        fmt.Printf("%s❌ %s%s\n", colorRed, err, colorReset)
+    } else {
+        fmt.Printf("%s↪️ Redo successful%s\n", colorYellow, colorReset)
+    }
 		}
 	}
 	
